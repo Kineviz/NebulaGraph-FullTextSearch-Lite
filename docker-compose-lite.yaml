@@ -1,13 +1,14 @@
 version: '3.4'
 services:
-  metad0:
+  metad:
     image: docker.io/vesoft/nebula-metad:v3.6.0
     environment:
       USER: root
+      TZ:  UTC
     command:
-      - --meta_server_addrs=metad0:9559
-      - --local_ip=metad0
-      - --ws_ip=metad0
+      - --meta_server_addrs=metad:9559
+      - --local_ip=metad
+      - --ws_ip=metad
       - --port=9559
       - --ws_http_port=19559
       - --data_path=/data/meta
@@ -15,7 +16,7 @@ services:
       - --v=0
       - --minloglevel=0
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://metad0:19559/status"]
+      test: ["CMD", "curl", "-sf", "http://metad:19559/status"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -25,23 +26,23 @@ services:
       - 19559:19559
       - 19560
     volumes:
-      - ${DATA_DIR}/data/meta0:/data/meta
-      - ${DATA_DIR}/logs/meta0:/logs
+      - ${DATA_DIR}/data/meta:/data/meta:rw
+      - ${DATA_DIR}/logs/meta:/logs:rw
     networks:
       - nebula-net
     restart: on-failure
     cap_add:
       - SYS_PTRACE
 
-  storaged0:
+  storaged:
     image: docker.io/vesoft/nebula-storaged:v3.6.0
     environment:
       USER: root
-      TZ:   "${TZ}"
+      TZ:  UTC
     command:
-      - --meta_server_addrs=metad0:9559
-      - --local_ip=storaged0
-      - --ws_ip=storaged0
+      - --meta_server_addrs=metad:9559
+      - --local_ip=storaged
+      - --ws_ip=storaged
       - --port=9779
       - --ws_http_port=19779
       - --data_path=/data/storage
@@ -49,9 +50,9 @@ services:
       - --v=0
       - --minloglevel=0
     depends_on:
-      - metad0
+      - metad
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://storaged0:19779/status"]
+      test: ["CMD", "curl", "-sf", "http://storaged:19779/status"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -61,8 +62,43 @@ services:
       - 19779:19779
       - 19780
     volumes:
-      - ${DATA_DIR}/data/storage0:/data/storage
-      - ${DATA_DIR}/logs/storage0:/logs
+      - ${DATA_DIR}/data/storage:/data/storage:rw
+      - ${DATA_DIR}/logs/storage:/logs:rw
+    networks:
+      - nebula-net
+    restart: on-failure
+    cap_add:
+      - SYS_PTRACE
+
+  graphd:
+    image: docker.io/vesoft/nebula-graphd:v3.6.0
+    environment:
+      USER: root
+      TZ:  UTC
+    command:
+      - --meta_server_addrs=metad:9559
+      - --port=9669
+      - --local_ip=graphd
+      - --ws_ip=graphd
+      - --ws_http_port=19669
+      - --log_dir=/logs
+      - --v=0
+      - --minloglevel=0
+    depends_on:
+      - storaged
+      - metad
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://graphd:19669/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    ports:
+      - 9669:9669
+      - 19669:19669
+      - 19670
+    volumes:
+      - ${DATA_DIR}/logs/graph:/logs:rw
     networks:
       - nebula-net
     restart: on-failure
@@ -73,40 +109,40 @@ services:
   listener0:
     image: vesoft/nebula-storaged:v3.6.0
     depends_on:
-      - metad0
+      - metad
     environment:
       USER: root
-      TZ:   "${TZ}"
+      TZ:  UTC
     entrypoint: ["/usr/local/nebula/bin/nebula-storaged"]
     command:
-      - "--flagfile=/usr/local/nebula/etc/nebula-storaged-listener.conf.production"
-      - "--daemonize=false"
-      - "--containerized=true"
-      - "--meta_server_addrs=metad0:9559"
-      - "--local_ip=172.10.10.101"
-      - "--ws_ip=172.10.10.101"
-      - "--port=9789"
-      - "--ws_http_port=19789"
-      - "--data_path=/data/listener"
-      - "--log_dir=/logs"
-      - "--stdout_log_file=storaged-listener-stdout.log"
-      - "--stderr_log_file=storaged-listener-stderr.log"
-      - "--minloglevel=0"
-      - "--v=4"
-      - "--redirect_stdout=true"
-      - "--timestamp_in_logfile_name=true"
+      - --flagfile=/usr/local/nebula/etc/nebula-storaged-listener.conf.production
+      - --daemonize=false
+      - --containerized=true
+      - --meta_server_addrs=metad:9559
+      - --local_ip=172.10.10.101
+      - --ws_ip=172.10.10.101
+      - --port=9789
+      - --ws_http_port=19789
+      - --data_path=/data/listener
+      - --log_dir=/logs
+      - --stdout_log_file=storaged-listener-stdout.log
+      - --stderr_log_file=storaged-listener-stderr.log
+      - --minloglevel=0
+      - --v=0
+      - --redirect_stdout=true
+      - --timestamp_in_logfile_name=true
     ports:
       - "9789:9789"
       - 19789
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://listener0:19789/status"]
+      test: ["CMD", "curl", "-sf", "http://listener:19789/status"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
     volumes:
-      - ${DATA_DIR}/data/listener0:/data/listener
-      - ${DATA_DIR}/logs/listener0:/logs
+      - ${DATA_DIR}/data/listener:/data/listener:rw
+      - ${DATA_DIR}/logs/listener:/logs:rw
     restart: on-failure
     cap_add:
       - SYS_PTRACE
@@ -124,15 +160,20 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
     environment:
-      - "discovery.type=single-node"
-      - "ES_PORT=0.0.0.0:9200"
+      - ES_PORT=0.0.0.0:9200
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - cluster.initial_master_nodes=es01
+      - bootstrap.memory_lock=true
+      - action.auto_create_index=+*
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
     ports:
       - 9200:9200
     depends_on:
-      - metad0
+      - graphd
     volumes:
-      - ${DATA_DIR}/data/elasticsearch/data:/usr/share/elasticsearch/data
-      - ${DATA_DIR}/logs/elasticsearch:/usr/share/elasticsearch/logs
+      - ${DATA_DIR}/data/elasticsearch:/usr/share/elasticsearch/data:rw
+      - ${DATA_DIR}/logs/elasticsearch:/usr/share/elasticsearch/logs:rw
     restart: on-failure
     cap_add:
       - SYS_PTRACE
@@ -146,51 +187,37 @@ services:
         nebula-net:
           ipv4_address: 172.10.10.100
 
-  graphd:
-    image: docker.io/vesoft/nebula-graphd:v3.6.0
-    environment:
-      USER: root
-      TZ:   "${TZ}"
-    command:
-      - --meta_server_addrs=metad0:9559
-      - --port=9669
-      - --local_ip=0.0.0.0
-      - --ws_ip=0.0.0.0
-      - --ws_http_port=19669
-      - --log_dir=/logs
-      - --v=0
-      - --minloglevel=0
+  console:
+    image: vesoft/nebula-console:v3.6.0
+    entrypoint: ""
+    command: 
+      - sh
+      - -c
+      - |
+        for i in `seq 1 60`;do
+          var=`nebula-console -addr graphd -port 9669 -u root -p nebula -e 'ADD HOSTS "storaged":9779'`;
+          if [[ $$? == 0 ]];then
+            break;
+          fi;
+          sleep 1;
+          echo "retry to add hosts.";
+        done && tail -f /dev/null;
     depends_on:
-      - storaged0
-      - elasticsearch
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://graphd:19669/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    ports:
-      - 9669:9669
-      - 19669:19669
-      - 19670
-    volumes:
-      - ${DATA_DIR}/logs/graph:/logs
+      - graphd
     networks:
       - nebula-net
-    restart: on-failure
-    cap_add:
-      - SYS_PTRACE
-
 
   web:
       image: vesoft/nebula-graph-studio:v3.9
       environment:
         USER: root
-        UPLOAD_DIR: ${MAPPING_DOCKER_DIR}
+        UPLOAD_DIR: /upload
+      depends_on:
+        - graphd
       ports:
         - 7001:7001
       volumes:
-        - ${UPLOAD_DIR}:${MAPPING_DOCKER_DIR}:rw
+        - ${DATA_DIR}/upload:/upload:rw
       networks:
         - nebula-net
       restart: on-failure

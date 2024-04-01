@@ -1,10 +1,11 @@
 #!/bin/bash
-# Nabula Graph Studio 
+# Nebula Graph Studio 
 ## http://localhost:7001   
 ## 默认用户名为 root，密码为 nebula
 ## Host:Port graphd:9669
 
-DATA_PATH=/mnt/f/wsl-docker-containers/nebula-docker-compose/
+## 获取当前目录
+DATA_PATH=$(cd `dirname $0`; pwd)
 
 SYSTEM="$(uname -o)"
 if [ $SYSTEM == "Msys" ]
@@ -15,8 +16,6 @@ then
 else
     echo "GNU/Linux"
 fi
-
-
 
 
 # docker network prune -f
